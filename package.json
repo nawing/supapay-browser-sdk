@@ -1,0 +1,32 @@
+{
+  "name": "superpay-browser-sdk",
+  "version": "1.0.0",
+  "description": "JavaScript SDK for integrating the MMQR Merchant and Redirect payment gateway.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build:dev": "webpack --mode development",
+    "build": "webpack --mode production && cp ./dist/index.js ./",
+    "start": "node dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "payment",
+    "gateway",
+    "sdk",
+    "typescript",
+    "qr-code"
+  ],
+  "author": "Your Company Name",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "clean-webpack-plugin": "^4.0.0",
+    "compression-webpack-plugin": "^11.1.0",
+    "ts-loader": "^9.5.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "webpack": "^5.102.1",
+    "webpack-cli": "^6.0.1"
+  },
+  "dependencies": {}
+}
