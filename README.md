@@ -11,13 +11,13 @@ The Supa SDK is distributed as a single JavaScript file, ready for direct inclus
 ### Step 1: Include the SDK
 Embed the following `<script>` tag into the `<head>` or before the closing `</body>` tag of your checkout page.
 ```html
-<script src="https://cdn.Supa.com/sdk/v1/MMQRMerchant.js"></script>
+<script src="https://browser.myanmyanpay.com/v1/sdk.js"></script>
 ```
 
 ### Step 2: Set up the Payment Container
 Create a simple HTML element where the SDK will render the payment-specific UI (the QR code and redirect link).
 ```html
-<div id="Supa-checkout-widget"> </div>
+<div id="mmpay-checkout-widget"> </div>
 ```
 
 ---
@@ -40,15 +40,14 @@ showPaymentModal(
 #### **Example Implementation**
 ```javascript
 document.getElementById('place-order-button').addEventListener('click', () => {
-    const Supa = new MMQRMerchant('pk_live_YOUR_PUBLISHABLE_KEY');
+    const MMPay = new MMPaySDK('pk_live_YOUR_PUBLISHABLE_KEY');
     const paymentDetails = {
-        amount: 49.99,
-        currency: 'SGD',
+        amount: 50000,
         orderId: 'ORD-' + new Date().getTime(),
         callbackUrl: 'https://your-merchant-site.com/payment-confirmation' // Redirect URL after mobile payment
     };
-    Supa.showPaymentModal(
-        'Supa-checkout-widget', // ID of the container element
+    MMPay.showPaymentModal(
+        'mmpay-checkout-widget', // ID of the container element
         paymentDetails,
         (result) => {
             // This callback fires ONLY after the payment is completed, failed, or expired.
@@ -59,7 +58,7 @@ document.getElementById('place-order-button').addEventListener('click', () => {
             } else {
                 console.error(`Payment failed: ${result.message}`);
                 // Update the UI to show the failure message
-                document.getElementById('Supa-checkout-widget').innerHTML = `Payment failed: ${result.message}`;
+                document.getElementById('mmpay-checkout-widget').innerHTML = `Payment failed: ${result.message}`;
             }
         }
     );

@@ -1,178 +1,342 @@
-import {CreatePaymentResponse, Environment, PaymentData, PaymentResult, SDKOptions} from './types';
-/**
- * MMQRMerchantSDK:
- * A TypeScript library for initiating QR/Redirect payments.
- */
-class MMQRMerchantBrowserSDK {
-  private publishableKey: string;
+export interface PaymentData {
+  amount: number;
+  currency: string;
+  orderId: string;
+  callbackUrl?: string;
+}
+export interface CreatePaymentResponse {
+  _id: string;
+  amount: number;
+  orderId: string;
+  currency: string;
+  transactionId: string;
+  qr: string;
+  url: string;
+}
+export interface PollingResponse {
+  _id: string;
+  appId: string;
+  orderId: string;
+  amount: number;
+  currency: string;
+  method?: string;
+  vendor?: string;
+  callbackUrl?: string;
+  callbackUrlStatus?: 'PENDING' | 'SUCCESS' | 'FAILED';
+  callbackAt?: Date;
+  disbursementStatus?: 'NONE' | 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  disburseAt?: Date;
+  items: {name: string, amount: number, quantity: number}[];
+  merchantId: string;
+  status: 'PENDING' | 'SUCCESS' | 'FAILED';
+  createdAt: Date;
+  transactionRefId?: string;
+  qr?: string;
+  redirectUrl?: string;
+}
+export interface PolliongResult {
+  success: boolean;
+  transaction: PollingResponse;
+}
+export interface SDKOptions {
+  pollInterval?: number;
+  environment?: 'sandbox' | 'production';
+  baseUrl?: string;
+  merchantName?: string;
+}
+
+export class MMPaySDK {
+
   private POLL_INTERVAL_MS: number;
-  private apiBaseUrl: string;
-  private environment: Environment;
-  private readonly ENV_URLS: Record<Environment, string> = {
-    'sandbox': 'https://sandbox.api.yourgateway.com/v1',
-    'production': 'https://api.yourgateway.com/v1'
-  };
-  /**
-   * constructor
-   * @param {string} publishableKey
-   * @param {SDKOptions} options
-   */
+
+  #publishableKey: string;
+  #baseUrl: string;
+  #merchantName: string;
+  #environment: 'sandbox' | 'production';
+
   constructor(publishableKey: string, options: SDKOptions = {}) {
     if (!publishableKey) {
-      throw new Error("A Publishable Key is required to initialize [MMQRMerchantSDK].");
+      throw new Error("A Publishable Key is required to initialize [MMPaySDK].");
     }
-    this.publishableKey = publishableKey;
-    this.environment = options.environment || 'production';
-    if (options.baseUrl) {
-      this.apiBaseUrl = options.baseUrl;
-    } else {
-      this.apiBaseUrl = this.ENV_URLS[this.environment];
-    }
+    this.#publishableKey = publishableKey;
+    this.#environment = (options.environment as 'sandbox' | 'production') || 'production';
+    this.#baseUrl = options.baseUrl || 'https://api.mm-pay.com';
+    this.#merchantName = options.merchantName || 'Your Merchant';
+
     this.POLL_INTERVAL_MS = options.pollInterval || 3000;
-    console.log(`[MMQRMerchantSDK] Initialized. Environment: ${this.environment} (URL: ${this.apiBaseUrl})`);
   }
   /**
    * _callApi
-   * @param {string} endpoint
+   * @param endpoint
    * @param data
    * @returns
    */
   private async _callApi<T>(endpoint: string, data: object = {}): Promise<T> {
-    const response = await fetch(`${this.apiBaseUrl}${endpoint}`, {
+    const response = await fetch(`${this.#baseUrl}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.publishableKey}`
+        'Authorization': `Bearer ${this.#publishableKey}`
       },
       body: JSON.stringify(data)
     });
     if (!response.ok) {
-      throw new Error(`API error (${response.status}): ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`API error (${response.status}): ${response.statusText}. Details: ${errorText}`);
     }
     return response.json() as Promise<T>;
   }
   /**
    * createPaymentRequest
-   * @param {PaymentData} paymentData
+   * @param payload
    * @returns
    */
-  public async createPaymentRequest(paymentData: PaymentData): Promise<CreatePaymentResponse> {
+  async createPaymentRequest(payload: PaymentData): Promise<CreatePaymentResponse> {
     try {
-      if (this.environment === 'sandbox') {
-        return {
-          success: true,
-          transactionId: 'txn_sandbox_' + Math.random().toString(36).substring(2, 9).toUpperCase(),
-          qrCodeUrl: 'https://placehold.co/200x200/90EE90/000000?text=TEST+QR',
-          redirectUrl: 'https://sandbox.yourgateway.com/test-payment',
-        } as CreatePaymentResponse;
-      }
-      const response = await this._callApi<CreatePaymentResponse>('/payment/create', paymentData);
-      return response;
+      const endpoint = this.#environment === 'sandbox'
+        ? '/xpayments/sandbox-payment-create'
+        : '/xpayments/production-payment-create';
+
+      return await this._callApi<CreatePaymentResponse>(endpoint, payload);
     } catch (error) {
       console.error("Payment request failed:", error);
-      return {
-        success: false,
-        transactionId: '',
-        qrCodeUrl: '',
-        redirectUrl: '',
-        error: (error as Error).message
-      };
+      throw error;
     }
   }
   /**
    * showPaymentModal
-   * @param {string} containerId
-   * @param {PaymentData} paymentData
-   * @param {Function} onComplete
+   * @param containerId
+   * @param payload
+   * @param onComplete
    * @returns
    */
   public async showPaymentModal(
     containerId: string,
-    paymentData: PaymentData,
-    onComplete: (result: PaymentResult) => void
+    payload: PaymentData,
+    onComplete: (result: PolliongResult) => void
   ): Promise<void> {
     const container = document.getElementById(containerId);
     if (!container) {
-      throw new Error(`Container element with ID '${containerId}' not found.`);
-    }
-    container.innerHTML = 'Initiating payment...';
-    const apiResponse = await this.createPaymentRequest(paymentData);
-    if (!apiResponse.success || !apiResponse.transactionId) {
-      container.innerHTML = `Payment Initiation Failed: ${apiResponse.error || 'No transaction ID received.'}`;
-      onComplete({success: false, message: apiResponse.error || 'Initiation failed.', transactionId: apiResponse.transactionId || 'N/A'});
+      console.error(`Container element with id "${containerId}" not found.`);
       return;
     }
-    this._renderModal(container, apiResponse.qrCodeUrl, apiResponse.redirectUrl);
-    this._startPolling(apiResponse.transactionId, onComplete);
+    container.innerHTML = `<div style="padding: 20px; text-align: center; color: #4b5563; font-family: sans-serif;">Initiating payment...</div>`;
+    try {
+      const apiResponse = await this.createPaymentRequest(payload);
+      if (apiResponse && apiResponse.qr && apiResponse.transactionId) {
+        this._renderModal(container, apiResponse, payload, this.#merchantName);
+        this._startPolling(apiResponse.transactionId, onComplete);
+      } else {
+        container.innerHTML = `<div style="padding: 20px; text-align: center; color: #dc3545; font-family: sans-serif;">Failed to initiate payment. No QR data received.</div>`;
+      }
+    } catch (error) {
+      container.innerHTML = `<div style="padding: 20px; text-align: center; color: #dc3545; font-family: sans-serif;">Error during payment initiation. See console for details.</div>`;
+    }
   }
   /**
    * _renderModal
-   * @param {HTMLElement} container
-   * @param {string} qrUrl
-   * @param {string} redirectUrl
+   * @param container
+   * @param apiResponse
+   * @param payload
+   * @param merchantName
    */
-  private _renderModal(container: HTMLElement, qrUrl: string, redirectUrl: string): void {
+  private _renderModal(container: HTMLElement, apiResponse: CreatePaymentResponse, payload: PaymentData, merchantName: string): void {
+    const qrData = apiResponse.qr;
+    const amountDisplay = `${apiResponse.amount.toFixed(2)} ${apiResponse.currency}`;
+    const qrCanvasId = 'mmpayQrCanvas';
+
+    const modalScript = `
+      const script = document.createElement('script');
+      script.src = "https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js";
+      script.onload = () => {
+        const canvas = document.getElementById('${qrCanvasId}');
+        const qrText = \`${qrData}\`;
+
+        if (typeof QRious !== 'undefined' && canvas) {
+            new QRious({
+                element: canvas,
+                value: qrText,
+                size: 200,
+                padding: 10
+            });
+        }
+      };
+      document.head.appendChild(script);
+
+      function downloadQR(orderId) {
+        const canvas = document.getElementById('${qrCanvasId}');
+        if (!canvas) return;
+
+        try {
+          const dataURL = canvas.toDataURL('image/png');
+          const link = document.createElement('a');
+          link.href = dataURL;
+          link.download = \`MMPay-QR-\${orderId}.png\`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } catch (e) {
+          console.error("Failed to download QR image:", e);
+        }
+      }
+    `;
+
     container.innerHTML = `
-      <div id="local-pay-modal" style="border: 1px solid #ccc; padding: 20px; text-align: center; max-width: 350px; margin: 20px auto; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); font-family: sans-serif;">
-          <h3 style="margin-top: 0; color: #333;">Scan to Pay</h3>
-          <img src="${qrUrl}" alt="QR Code" style="width: 200px; height: 200px; display: block; margin: 15px auto; border: 1px solid #eee;">
-          <p style="color: #888; font-size: 0.9em;">--- OR ---</p>
-          <a href="${redirectUrl}" target="_blank" style="display: block; padding: 10px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px; font-weight: bold; transition: background-color 0.2s;">
-              Click to Pay by Bank Redirect
-          </a>
-          <p style="margin-top: 15px; font-size: 0.8em; color: #aaa;">Transaction ID: ${qrUrl.match(/=(.*)/)?.[1] || '...'} | Env: ${this.environment}</p>
-          <p style="font-size: 0.9em; color: #d9534f; font-weight: bold;">Do not close this window while paying.</p>
+      <style>
+        .mmpay-card {
+          background: #ffffff;
+          border-radius: 12px;
+          padding: 30px;
+          max-width: 400px;
+          width: 90%;
+          margin: 20px auto;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+          text-align: center;
+          font-family: 'Inter', sans-serif;
+          border: 1px solid #e5e7eb;
+        }
+        .mmpay-header {
+          color: #1f2937;
+          font-size: 1.5rem;
+          font-weight: 700;
+          margin-bottom: 5px;
+        }
+        .mmpay-qr-container {
+          border: 1px solid #d1d5db;
+          padding: 5px;
+          border-radius: 8px;
+          margin: 20px auto;
+          display: inline-block;
+        }
+        #${qrCanvasId} {
+          display: block;
+          background: white;
+        }
+        .mmpay-amount {
+          font-size: 2.25rem;
+          font-weight: 800;
+          color: #059669;
+          margin: 10px 0 10px 0;
+        }
+        .mmpay-detail {
+          font-size: 0.9rem;
+          color: #6b7280;
+          margin: 5px 0;
+        }
+        .mmpay-detail strong {
+          color: #374151;
+          font-weight: 600;
+        }
+        .mmpay-secure-text {
+          color: #10b981;
+          font-size: 0.75rem;
+          font-weight: 500;
+          margin-top: 5px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+        }
+        .mmpay-button {
+          background-color: #3b82f6;
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 8px;
+          font-size: 1rem;
+          font-weight: 600;
+          cursor: pointer;
+          margin-top: 25px;
+          transition: background-color 0.2s, box-shadow 0.2s;
+          box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
+        }
+        .mmpay-button:hover {
+          background-color: #2563eb;
+          box-shadow: 0 6px 8px rgba(37, 99, 235, 0.4);
+        }
+        .mmpay-warning {
+          font-size: 0.85em;
+          color: #ef4444;
+          font-weight: 500;
+          margin-top: 25px;
+        }
+      </style>
+
+      <div class="mmpay-card">
+          <div class="mmpay-secure-text">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M8 1a2 2 0 0 0-2 2v2H2.5a.5.5 0 0 0 0 1h11a.5.5 0 0 0 0-1H10V3a2 2 0 0 0-2-2zM4 11V8a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v3h2v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-4h2z"/>
+              </svg>
+              Secure Payment
+          </div>
+
+          <div class="mmpay-header">
+              Pay to ${merchantName}
+          </div>
+
+          <div class="mmpay-amount">${amountDisplay}</div>
+          <div class="mmpay-qr-container">
+              <canvas id="${qrCanvasId}" width="200" height="200"></canvas>
+          </div>
+
+          <button class="mmpay-button" onclick="downloadQR('${payload.orderId}')">
+              Download QR Code
+          </button>
+
+          <div class="mmpay-detail" style="margin-top: 20px;">
+              Order ID: <strong>${apiResponse.orderId}</strong>
+          </div>
+          <div class="mmpay-detail">
+              Transaction ID: <strong>${apiResponse.transactionId}</strong>
+          </div>
+
+          <p class="mmpay-warning">
+              Please complete the payment on your device. Do not close this window while paying.
+          </p>
       </div>
+
+      <script>
+        ${modalScript}
+      </script>
     `;
   }
   /**
    * _startPolling
-   * @param {string} transactionId
-   * @param {Function} onComplete
+   * @param _id
+   * @param onComplete
    */
-  private async _startPolling(transactionId: string, onComplete: (result: PaymentResult) => void): Promise<void> {
+  private async _startPolling(_id: string, onComplete: (result: PolliongResult) => void): Promise<void> {
     let intervalId: number | undefined = undefined;
+    let response: PollingResponse | undefined;
+
     const checkStatus = async () => {
       try {
-        if (this.environment === 'sandbox') {
-          if ((window as any)._sandboxPollCount === undefined) (window as any)._sandboxPollCount = 0;
-          (window as any)._sandboxPollCount++;
-          let status = 'PENDING';
-          if ((window as any)._sandboxPollCount > 3) {
-            status = 'COMPLETED';
-          }
-          const response = {status: status};
-          if (status === 'COMPLETED') {
-            window.clearInterval(intervalId);
-            onComplete({success: true, message: 'Payment confirmed!', transactionId: transactionId});
-            return;
-          }
-          if (status === 'FAILED') {
-            window.clearInterval(intervalId);
-            onComplete({success: false, message: `Payment ${status}.`, transactionId: transactionId});
-            return;
-          }
-        } else {
-          const response = await this._callApi<{status: string}>('/payment/status/' + transactionId);
-          const status = response.status.toUpperCase();
-          if (status === 'COMPLETED' || status === 'SUCCESS') {
-            window.clearInterval(intervalId);
-            onComplete({success: true, message: 'Payment confirmed!', transactionId: transactionId});
-            return;
-          } else if (status === 'FAILED' || status === 'EXPIRED') {
-            window.clearInterval(intervalId);
-            onComplete({success: false, message: `Payment ${status}.`, transactionId: transactionId});
-            return;
-          }
+        const endpoint = this.#environment === 'sandbox'
+          ? '/xpayments/sandbox-payment-polling'
+          : '/xpayments/production-payment-polling';
+
+        response = await this._callApi<PollingResponse>(endpoint, {_id: _id});
+
+        const status = (response.status || '').toUpperCase();
+
+        if (status === 'SUCCESS') {
+          window.clearInterval(intervalId);
+          onComplete({success: true, transaction: response as PollingResponse});
+          return;
         }
-        console.log(`Polling status for ${transactionId}: ${this.environment === 'sandbox' ? 'PENDING (Mock)' : 'PENDING (Real)'}`);
+        if (status === 'FAILED' || status === 'EXPIRED') {
+          window.clearInterval(intervalId);
+          onComplete({success: false, transaction: response as PollingResponse});
+          return;
+        }
       } catch (error) {
         console.error("Polling error:", error);
       }
     };
+
+    await checkStatus();
     intervalId = window.setInterval(checkStatus, this.POLL_INTERVAL_MS);
   }
 }
 
-// Global exposure (essential for client implementation)
-(window as any).MMQRMerchantBrowserSDK = MMQRMerchantBrowserSDK;
+(window as any).MMPaySDK = MMPaySDK;
