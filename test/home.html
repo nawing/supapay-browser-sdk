@@ -141,10 +141,10 @@
             currency: 'MMK',
             items: [
                 { name: "Fastify T-Shirt", price: 25000, qty: 1 },
-                { name: "Node.js Dev Sticker Pack", price: 15000, qty: 3 },
+                { name: "Node.js Dev Sticker Pack", price: 10000, qty: 3 },
                 { name: "TypeScript Handbook (Digital)", price: 18000, qty: 1 }
             ],
-            shipping: 7.50,
+            shipping: 2500,
             taxRate: 0.08
         };
 
@@ -205,27 +205,21 @@
             document.getElementById(RESULT_CONTAINER_ID).innerHTML = 'Payment initiated. Waiting for API response and starting polling...';
 
             try {
-                // Initialize the SDK with sandbox environment (as you intended for testing)
+
                 const sdk = new MMPaySDK(PUBLISHABLE_KEY, {
                     baseUrl: 'https://supapay.ecgedms.com',
                     environment: 'sandbox',
                     merchantName: 'Fastify E-Shop',
                     pollInterval: 5000 // Poll every 5 seconds
                 });
-
-                // Prepare the payment payload
-                const paymentPayload = {
+                await sdk.showPaymentModal({
                     amount: parseFloat(finalAmount.toFixed(2)),
                     currency: mockOrder.currency,
                     orderId: 'FSTY' + Date.now(),
                     callbackUrl: 'https://your-fastify-backend.com/api/mmpay/webhook'
-                };
-
-                // Define the completion handler
-                const onPaymentComplete = (result) => {
+                },(result) => {
                     const resultContainer = document.getElementById(RESULT_CONTAINER_ID);
                     document.getElementById(PAY_BUTTON_ID).disabled = false;
-
                     if (result.success) {
                         resultContainer.innerHTML = '<span class="success">✅ PAYMENT SUCCESSFUL!</span><br><br>' + JSON.stringify(result.transaction, null, 2);
                         document.getElementById(CONTAINER_ID).innerHTML = '<div style="color: #2ecc71; font-size: 1.5rem; font-weight: bold; padding: 50px 0;">Transaction Complete! Thank you for your order!</div>';
@@ -233,14 +227,7 @@
                         resultContainer.innerHTML = '<span class="failure">❌ PAYMENT FAILED / EXPIRED.</span><br><br>' + JSON.stringify(result.transaction, null, 2);
                         document.getElementById(CONTAINER_ID).innerHTML = '<div style="color: #e74c3c; font-size: 1.5rem; font-weight: bold; padding: 50px 0;">Transaction Failed. Please try again.</div>';
                     }
-                };
-
-                // Show the payment modal, which starts the API call and polling loop
-                await sdk.showPaymentModal(
-                    CONTAINER_ID,
-                    paymentPayload,
-                    onPaymentComplete
-                );
+                });
 
             } catch (error) {
                 console.error("Critical SDK Error:", error);
