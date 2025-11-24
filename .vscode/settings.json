@@ -19,7 +19,6 @@
     "**/CVS": true,
     "**/node_modules": true,
     "**/keys": true,
-    "**/dist": true,
   },
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,

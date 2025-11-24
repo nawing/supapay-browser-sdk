@@ -1,0 +1,256 @@
+<ht<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fastify E-Shop Checkout</title>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            max-width: 1000px;
+            width: 100%;
+        }
+        @media (min-width: 768px) {
+            .container {
+                flex-direction: row;
+            }
+        }
+        .order-summary, .payment-area {
+            background-color: #ffffff;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            flex: 1;
+            min-height: 450px;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        .item-list div {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px dashed #ecf0f1;
+            color: #7f8c8d;
+        }
+        .item-list div:last-child {
+            border-bottom: none;
+        }
+        .total {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 2px solid #3498db;
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #2c3e50;
+            display: flex;
+            justify-content: space-between;
+        }
+        .checkout-button {
+            width: 100%;
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s, box-shadow 0.2s;
+            margin-top: 20px;
+            box-shadow: 0 2px 5px rgba(46, 204, 113, 0.4);
+        }
+        .checkout-button:hover {
+            background-color: #27ae60;
+            box-shadow: 0 4px 8px rgba(39, 174, 96, 0.6);
+        }
+        .payment-status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            background-color: #ecf0f1;
+            white-space: pre-wrap;
+            text-align: left;
+            font-size: 0.9rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .success { color: #28a745; font-weight: bold; }
+        .failure { color: #dc3545; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- 1. Order Summary (Left Side) -->
+        <div class="order-summary">
+            <h2>🛍️ Your Order Summary</h2>
+            <div class="item-list" id="order-items">
+                <!-- Items list populated by JS -->
+            </div>
+            <div class="total" id="order-total">
+                <span>Total Due:</span>
+                <span id="final-amount">--</span>
+            </div>
+            <button class="checkout-button" id="pay-button">
+                Pay Securely with MMPay
+            </button>
+        </div>
+
+        <!-- 2. Payment Area (Right Side - Will show QR modal) -->
+        <div class="payment-area">
+            <h2>💳 Payment Details</h2>
+            <div id="payment-container">
+                <p style="color: #6c757d; padding: 20px;">Click the "Pay Securely" button to initialize the transaction and display the MMPay QR code.</p>
+            </div>
+            <div class="payment-status" id="result-container">
+                Awaiting transaction polling result...
+            </div>
+        </div>
+    </div>
+
+    <!-- The external SDK file is loaded here -->
+    <script src="../dist/mmpay-sdk.js"></script>
+
+    <!-- Client-Side Application Logic -->
+    <script>
+        // --- Configuration ---
+        const PUBLISHABLE_KEY = 'pk_test_504013d7294ea1f6ecf4a2a0d38c31e0788286ef1b8ccacecf2a9b2809e23341'; // <<< REMEMBER TO REPLACE THIS KEY!
+        const CONTAINER_ID = 'payment-container';
+        const RESULT_CONTAINER_ID = 'result-container';
+        const PAY_BUTTON_ID = 'pay-button';
+        const FINAL_AMOUNT_ID = 'final-amount';
+        const ORDER_ITEMS_ID = 'order-items';
+
+        const mockOrder = {
+            currency: 'MMK',
+            items: [
+                { name: "Fastify T-Shirt", price: 25000, qty: 1 },
+                { name: "Node.js Dev Sticker Pack", price: 15000, qty: 3 },
+                { name: "TypeScript Handbook (Digital)", price: 18000, qty: 1 }
+            ],
+            shipping: 7.50,
+            taxRate: 0.08
+        };
+
+        let finalAmount = 0;
+
+        /**
+         * Renders the order summary and calculates the total.
+         */
+        function renderOrderSummary() {
+            const itemList = document.getElementById(ORDER_ITEMS_ID);
+            const finalAmountDisplay = document.getElementById(FINAL_AMOUNT_ID);
+
+            let subtotal = 0;
+            itemList.innerHTML = '';
+
+            mockOrder.items.forEach(item => {
+                const itemTotal = item.price * item.qty;
+                subtotal += itemTotal;
+                itemList.innerHTML += `
+                    <div>
+                        <span>${item.qty} x ${item.name}</span>
+                        <span>$${itemTotal.toFixed(2)}</span>
+                    </div>
+                `;
+            });
+
+            const tax = subtotal * mockOrder.taxRate;
+            finalAmount = subtotal + mockOrder.shipping + tax;
+
+            // Add breakdown to list
+            itemList.innerHTML += `
+                <div style="margin-top: 10px; color: #34495e;"><span>Subtotal:</span><span>$${subtotal.toFixed(2)}</span></div>
+                <div><span>Shipping:</span><span>$${mockOrder.shipping.toFixed(2)}</span></div>
+                <div><span>Tax (${(mockOrder.taxRate * 100).toFixed(0)}%):</span><span>$${tax.toFixed(2)}</span></div>
+            `;
+
+            finalAmountDisplay.textContent = `$${finalAmount.toFixed(2)} ${mockOrder.currency}`;
+        }
+
+        /**
+         * The main function to initiate the payment using the SDK.
+         */
+        document.getElementById(PAY_BUTTON_ID).addEventListener('click', async (event) => {
+            event.target.disabled = true;
+
+            if (typeof MMPaySDK === 'undefined') {
+                document.getElementById(RESULT_CONTAINER_ID).innerHTML = '<span class="failure">❌ SDK Error: MMPaySDK not loaded. Check script src or compilation.</span>';
+                event.target.disabled = false;
+                return;
+            }
+
+            if (PUBLISHABLE_KEY === 'YOUR_MMPAY_PUBLISHABLE_KEY') {
+                document.getElementById(RESULT_CONTAINER_ID).innerHTML = '<span class="failure">❌ SDK Initialization Failed: Please replace the placeholder key.</span>';
+                event.target.disabled = false;
+                return;
+            }
+
+            document.getElementById(RESULT_CONTAINER_ID).innerHTML = 'Payment initiated. Waiting for API response and starting polling...';
+
+            try {
+                // Initialize the SDK with sandbox environment (as you intended for testing)
+                const sdk = new MMPaySDK(PUBLISHABLE_KEY, {
+                    baseUrl: 'https://supapay.ecgedms.com',
+                    environment: 'sandbox',
+                    merchantName: 'Fastify E-Shop',
+                    pollInterval: 5000 // Poll every 5 seconds
+                });
+
+                // Prepare the payment payload
+                const paymentPayload = {
+                    amount: parseFloat(finalAmount.toFixed(2)),
+                    currency: mockOrder.currency,
+                    orderId: 'FSTY' + Date.now(),
+                    callbackUrl: 'https://your-fastify-backend.com/api/mmpay/webhook'
+                };
+
+                // Define the completion handler
+                const onPaymentComplete = (result) => {
+                    const resultContainer = document.getElementById(RESULT_CONTAINER_ID);
+                    document.getElementById(PAY_BUTTON_ID).disabled = false;
+
+                    if (result.success) {
+                        resultContainer.innerHTML = '<span class="success">✅ PAYMENT SUCCESSFUL!</span><br><br>' + JSON.stringify(result.transaction, null, 2);
+                        document.getElementById(CONTAINER_ID).innerHTML = '<div style="color: #2ecc71; font-size: 1.5rem; font-weight: bold; padding: 50px 0;">Transaction Complete! Thank you for your order!</div>';
+                    } else {
+                        resultContainer.innerHTML = '<span class="failure">❌ PAYMENT FAILED / EXPIRED.</span><br><br>' + JSON.stringify(result.transaction, null, 2);
+                        document.getElementById(CONTAINER_ID).innerHTML = '<div style="color: #e74c3c; font-size: 1.5rem; font-weight: bold; padding: 50px 0;">Transaction Failed. Please try again.</div>';
+                    }
+                };
+
+                // Show the payment modal, which starts the API call and polling loop
+                await sdk.showPaymentModal(
+                    CONTAINER_ID,
+                    paymentPayload,
+                    onPaymentComplete
+                );
+
+            } catch (error) {
+                console.error("Critical SDK Error:", error);
+                document.getElementById(RESULT_CONTAINER_ID).innerHTML = `<span class="failure">❌ CRITICAL ERROR:</span><br>Could not initiate payment. Details: ${error.message}`;
+                document.getElementById(PAY_BUTTON_ID).disabled = false;
+            }
+        });
+
+        // Run the setup when the document is ready
+        window.onload = renderOrderSummary;
+    </script>
+</body>
+</html>

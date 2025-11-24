@@ -53,7 +53,11 @@ export class MMPaySDK {
   #baseUrl: string;
   #merchantName: string;
   #environment: 'sandbox' | 'production';
-
+  /**
+   * constructor
+   * @param publishableKey
+   * @param options
+   */
   constructor(publishableKey: string, options: SDKOptions = {}) {
     if (!publishableKey) {
       throw new Error("A Publishable Key is required to initialize [MMPaySDK].");
