@@ -1,6 +1,6 @@
 {
   "name": "mmpay-browser-sdk",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "JavaScript SDK for integrating the MMQR Merchant and Redirect payment gateway",
   "keywords": [
     "MMQR",

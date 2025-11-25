@@ -123,8 +123,25 @@
         </div>
     </div>
 
-    <!-- The external SDK file is loaded here -->
-    <script src="../dist/mmpay-sdk.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mmpay-browser-sdk@1.0.3/dist/mmpay-sdk.js"></script>
+    <!-- <script>
+        const PUBLISHABLE_KEY = 'pk_test_504013d7294ea1f6ecf4a2a0d38c31e0788286ef1b8ccacecf2a9b2809e23341';
+        const sdk = new MMPaySDK(PUBLISHABLE_KEY, {
+            baseUrl: 'https://supapay.ecgedms.com',
+            environment: 'sandbox',
+            merchantName: 'Fastify E-Shop',
+            pollInterval: 5000
+        });
+        await sdk.showPaymentModal({
+            amount: parseFloat(finalAmount.toFixed(2)),
+            currency: mockOrder.currency,
+            orderId: 'FSTY' + Date.now(),
+            callbackUrl: 'https://your.backend.com/api/mmpay/webhook'
+        },(result) => {
+            const resultContainer = document.getElementById(RESULT_CONTAINER_ID);
+            // DO your logic
+        });
+    </script> -->
 
     <!-- Client-Side Application Logic -->
     <script>
