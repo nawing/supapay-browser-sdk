@@ -1,46 +1,45 @@
-export interface PaymentData {
+export interface ICreatePaymentRequest {
     amount: number;
     currency: string;
     orderId: string;
     callbackUrl?: string;
+    nonce?: string;
 }
-export interface CreatePaymentResponse {
+export interface ICreatePaymentResponse {
     _id: string;
     amount: number;
     orderId: string;
     currency: string;
-    transactionId: string;
+    transactionRefId: string;
     qr: string;
     url: string;
 }
-export interface PollingResponse {
-    _id: string;
-    appId: string;
-    orderId: string;
+export interface ICreateTokenRequest {
     amount: number;
     currency: string;
-    method?: string;
-    vendor?: string;
+    orderId: string;
     callbackUrl?: string;
-    callbackUrlStatus?: 'PENDING' | 'SUCCESS' | 'FAILED';
-    callbackAt?: Date;
-    disbursementStatus?: 'NONE' | 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
-    disburseAt?: Date;
-    items: {
-        name: string;
-        amount: number;
-        quantity: number;
-    }[];
-    merchantId: string;
+    nonce?: string;
+}
+export interface ICreateTokenResponse {
+    orderId: string;
+    token: string;
+}
+export interface IPollingRequest {
+    amount: number;
+    currency: string;
+    orderId: string;
+    callbackUrl?: string;
+    nonce?: string;
+}
+export interface IPollingResponse {
+    orderId: string;
+    transactionRefId: string;
     status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'EXPIRED';
-    createdAt: Date;
-    transactionRefId?: string;
-    qr?: string;
-    redirectUrl?: string;
 }
 export interface PolliongResult {
     success: boolean;
-    transaction: PollingResponse;
+    transaction: IPollingResponse;
 }
 export interface SDKOptions {
     pollInterval?: number;
@@ -50,6 +49,7 @@ export interface SDKOptions {
 }
 export declare class MMPaySDK {
     private POLL_INTERVAL_MS;
+    private tokenKey;
     private publishableKey;
     private baseUrl;
     private merchantName;
@@ -69,28 +69,44 @@ export declare class MMPaySDK {
      */
     private _callApi;
     /**
-     * createPaymentRequest
-     * @param {PaymentData} payload
-     * @returns
+     * createTokenRequest
+     * @param {ICreateTokenRequest} payload
+     * @param {number} payload.amount
+     * @param {string} payload.currency
+     * @param {string} payload.orderId
+     * @param {string} payload.nonce
+     * @param {string} payload.callbackUrl
+     * @returns {Promise<ICreateTokenResponse>}
      */
-    createPaymentRequest(payload: PaymentData): Promise<CreatePaymentResponse>;
+    createTokenRequest(payload: ICreateTokenRequest): Promise<ICreateTokenResponse>;
+    /**
+     * createPaymentRequest
+     * @param {ICreatePaymentRequest} payload
+     * @param {number} payload.amount
+     * @param {string} payload.currency
+     * @param {string} payload.orderId
+     * @param {string} payload.nonce
+     * @param {string} payload.callbackUrl
+     * @returns {Promise<ICreatePaymentResponse>}
+     */
+    createPaymentRequest(payload: ICreatePaymentRequest): Promise<ICreatePaymentResponse>;
+    /**
+     * showPaymentModal
+     * @param {CreatePaymentRequest} payload
+     * @param {Function} onComplete
+     */
+    showPaymentModal(payload: ICreatePaymentRequest, onComplete: (result: PolliongResult) => void): Promise<void>;
     /**
      * _createAndRenderModal
      * @param {string} contentHtml
-     * @param isTerminal
+     * @param {boolean} isTerminal
      * @returns
      */
     private _createAndRenderModal;
     /**
-     * showPaymentModal
-     * @param {PaymentData} payload
-     * @param {Function} onComplete
-     */
-    showPaymentModal(payload: PaymentData, onComplete: (result: PolliongResult) => void): Promise<void>;
-    /**
      * _renderQrModalContent
-     * @param {CreatePaymentResponse} apiResponse
-     * @param {PaymentData} payload
+     * @param {ICreatePaymentResponse} apiResponse
+     * @param {CreatePaymentRequest} payload
      * @param {string} merchantName
      */
     private _renderQrModalContent;
@@ -122,7 +138,12 @@ export declare class MMPaySDK {
     private _injectQrScript;
     /**
      * _startPolling
-     * @param {string} _id
+     * @param {IPollingRequest} payload
+     * @param {number} payload.amount
+     * @param {string} payload.currency
+     * @param {string} payload.orderId
+     * @param {string} payload.nonce
+     * @param {string} payload.callbackUrl
      * @param {Function} onComplete
      */
     private _startPolling;

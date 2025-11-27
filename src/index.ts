@@ -1,42 +1,45 @@
-export interface PaymentData {
+export interface ICreatePaymentRequest {
   amount: number;
   currency: string;
   orderId: string;
   callbackUrl?: string;
+  nonce?: string;
 }
-export interface CreatePaymentResponse {
+export interface ICreatePaymentResponse {
   _id: string;
   amount: number;
   orderId: string;
   currency: string;
-  transactionId: string;
+  transactionRefId: string;
   qr: string;
   url: string;
 }
-export interface PollingResponse {
-  _id: string;
-  appId: string;
-  orderId: string;
+export interface ICreateTokenRequest {
   amount: number;
   currency: string;
-  method?: string;
-  vendor?: string;
+  orderId: string;
   callbackUrl?: string;
-  callbackUrlStatus?: 'PENDING' | 'SUCCESS' | 'FAILED';
-  callbackAt?: Date;
-  disbursementStatus?: 'NONE' | 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
-  disburseAt?: Date;
-  items: {name: string, amount: number, quantity: number}[];
-  merchantId: string;
+  nonce?: string;
+}
+export interface ICreateTokenResponse {
+  orderId: string;
+  token: string;
+}
+export interface IPollingRequest {
+  amount: number;
+  currency: string;
+  orderId: string;
+  callbackUrl?: string;
+  nonce?: string;
+}
+export interface IPollingResponse {
+  orderId: string;
+  transactionRefId: string;
   status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'EXPIRED';
-  createdAt: Date;
-  transactionRefId?: string;
-  qr?: string;
-  redirectUrl?: string;
 }
 export interface PolliongResult {
   success: boolean;
-  transaction: PollingResponse;
+  transaction: IPollingResponse;
 }
 export interface SDKOptions {
   pollInterval?: number;
@@ -57,6 +60,7 @@ declare const window: Window & {
 export class MMPaySDK {
 
   private POLL_INTERVAL_MS: number;
+  private tokenKey: string;
   private publishableKey: string;
   private baseUrl: string;
   private merchantName: string;
@@ -66,8 +70,8 @@ export class MMPaySDK {
   private overlayElement: HTMLDivElement | null = null;
 
   // Properties to store pending data for re-rendering after cancel attempt
-  private pendingApiResponse: CreatePaymentResponse | null = null;
-  private pendingPaymentPayload: PaymentData | null = null;
+  private pendingApiResponse: ICreatePaymentResponse | null = null;
+  private pendingPaymentPayload: ICreatePaymentRequest | null = null;
 
   private readonly QR_SIZE: number = 300;
 
@@ -88,14 +92,21 @@ export class MMPaySDK {
    * @returns
    */
   private async _callApi<T>(endpoint: string, data: object = {}): Promise<T> {
-    const payload = JSON.stringify(data)
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'POST',
-      headers: {
+    let config: any = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${this.publishableKey}`
+    }
+    if (this.tokenKey) {
+      config = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.publishableKey}`,
-      },
-      body: payload
+        'X-MMPay-Browser-Authorization': `${this.tokenKey}`
+      }
+    }
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'POST',
+      headers: config,
+      body: JSON.stringify(data)
     });
     if (!response.ok) {
       const errorText = await response.text();
@@ -104,26 +115,81 @@ export class MMPaySDK {
     return response.json() as Promise<T>;
   }
   /**
-   * createPaymentRequest
-   * @param {PaymentData} payload
-   * @returns
+   * createTokenRequest
+   * @param {ICreateTokenRequest} payload
+   * @param {number} payload.amount
+   * @param {string} payload.currency
+   * @param {string} payload.orderId
+   * @param {string} payload.nonce
+   * @param {string} payload.callbackUrl
+   * @returns {Promise<ICreateTokenResponse>}
    */
-  async createPaymentRequest(payload: PaymentData): Promise<CreatePaymentResponse> {
+  async createTokenRequest(payload: ICreateTokenRequest): Promise<ICreateTokenResponse> {
+    try {
+      const endpoint = this.environment === 'sandbox'
+        ? '/xpayments/sandbox-token-request'
+        : '/xpayments/production-token-request';
+      return await this._callApi<ICreateTokenResponse>(endpoint, payload);
+    } catch (error) {
+      console.error("Token request failed:", error);
+      throw error;
+    }
+  }
+  /**
+   * createPaymentRequest
+   * @param {ICreatePaymentRequest} payload
+   * @param {number} payload.amount
+   * @param {string} payload.currency
+   * @param {string} payload.orderId
+   * @param {string} payload.nonce
+   * @param {string} payload.callbackUrl
+   * @returns {Promise<ICreatePaymentResponse>}
+   */
+  async createPaymentRequest(payload: ICreatePaymentRequest): Promise<ICreatePaymentResponse> {
     try {
       const endpoint = this.environment === 'sandbox'
         ? '/xpayments/sandbox-payment-create'
         : '/xpayments/production-payment-create';
-
-      return await this._callApi<CreatePaymentResponse>(endpoint, payload);
+      return await this._callApi<ICreatePaymentResponse>(endpoint, payload);
     } catch (error) {
       console.error("Payment request failed:", error);
       throw error;
     }
   }
   /**
+   * showPaymentModal
+   * @param {CreatePaymentRequest} payload
+   * @param {Function} onComplete
+   */
+  public async showPaymentModal(
+    payload: ICreatePaymentRequest,
+    onComplete: (result: PolliongResult) => void
+  ): Promise<void> {
+    const initialContent = `<div class="mmpay-overlay-content"><div style="text-align: center; color: #fff;">ငွေပေးချေမှု စတင်နေသည်...</div></div>`;
+    this._createAndRenderModal(initialContent, false);
+    this.onCompleteCallback = onComplete;
+    try {
+      payload.nonce = new Date().getTime().toString() + '_mmp';
+      const tokenResponse = await this.createTokenRequest(payload);
+      this.tokenKey = tokenResponse.token as string;
+      const apiResponse = await this.createPaymentRequest(payload);
+      if (apiResponse && apiResponse.qr && apiResponse.transactionRefId) {
+        this.pendingApiResponse = apiResponse;
+        this.pendingPaymentPayload = payload;
+        this._renderQrModalContent(apiResponse, payload, this.merchantName);
+        this._startPolling(payload, onComplete);
+      } else {
+        this._showTerminalMessage(apiResponse.orderId || 'N/A', 'FAILED', 'ငွေပေးချေမှု စတင်ရန် မအောင်မြင်ပါ။ QR ဒေတာ မရရှိပါ။');
+      }
+    } catch (error) {
+      this.tokenKey = null;
+      this._showTerminalMessage(payload.orderId || 'N/A', 'FAILED', 'ငွေပေးချေမှု စတင်စဉ် အမှားအယွင်း ဖြစ်ပွားသည်။ ကွန်ဆိုးလ်တွင် ကြည့်ပါ။');
+    }
+  }
+  /**
    * _createAndRenderModal
    * @param {string} contentHtml
-   * @param isTerminal
+   * @param {boolean} isTerminal
    * @returns
    */
   private _createAndRenderModal(contentHtml: string, isTerminal: boolean = false): HTMLDivElement {
@@ -235,39 +301,12 @@ export class MMPaySDK {
     return overlay;
   }
   /**
-   * showPaymentModal
-   * @param {PaymentData} payload
-   * @param {Function} onComplete
-   */
-  public async showPaymentModal(
-    payload: PaymentData,
-    onComplete: (result: PolliongResult) => void
-  ): Promise<void> {
-    const initialContent = `<div class="mmpay-overlay-content"><div style="text-align: center; color: #fff;">ငွေပေးချေမှု စတင်နေသည်...</div></div>`;
-    this._createAndRenderModal(initialContent, false);
-    this.onCompleteCallback = onComplete;
-    try {
-      const apiResponse = await this.createPaymentRequest(payload);
-      if (apiResponse && apiResponse.qr && apiResponse.transactionId) {
-        this.pendingApiResponse = apiResponse;
-        this.pendingPaymentPayload = payload;
-        this._renderQrModalContent(apiResponse, payload, this.merchantName);
-        this._startPolling(apiResponse._id, onComplete);
-      } else {
-        this._showTerminalMessage(apiResponse.orderId || 'N/A', 'FAILED', 'ငွေပေးချေမှု စတင်ရန် မအောင်မြင်ပါ။ QR ဒေတာ မရရှိပါ။');
-      }
-    } catch (error) {
-      // Myanmar translation for "Error during payment initiation. See console."
-      this._showTerminalMessage(payload.orderId || 'N/A', 'FAILED', 'ငွေပေးချေမှု စတင်စဉ် အမှားအယွင်း ဖြစ်ပွားသည်။ ကွန်ဆိုးလ်တွင် ကြည့်ပါ။');
-    }
-  }
-  /**
    * _renderQrModalContent
-   * @param {CreatePaymentResponse} apiResponse
-   * @param {PaymentData} payload
+   * @param {ICreatePaymentResponse} apiResponse
+   * @param {CreatePaymentRequest} payload
    * @param {string} merchantName
    */
-  private _renderQrModalContent(apiResponse: CreatePaymentResponse, payload: PaymentData, merchantName: string): void {
+  private _renderQrModalContent(apiResponse: ICreatePaymentResponse, payload: ICreatePaymentRequest, merchantName: string): void {
     const qrData = apiResponse.qr;
     const amountDisplay = `${apiResponse.amount.toFixed(2)} ${apiResponse.currency}`;
     const qrCanvasId = 'mmpayQrCanvas';
@@ -334,7 +373,7 @@ export class MMPaySDK {
               <span class="mmpay-text-myanmar">မှာယူမှုနံပါတ်:</span> <strong>${apiResponse.orderId}</strong>
           </div>
           <div class="mmpay-detail">
-              <span class="mmpay-text-myanmar">ငွေပေးငွေယူနံပါတ်:</span> <strong>${apiResponse.transactionId}</strong>
+              <span class="mmpay-text-myanmar">ငွေပေးငွေယူနံပါတ်:</span> <strong>${apiResponse.transactionRefId}</strong>
           </div>
 
           <p class="mmpay-warning mmpay-text-myanmar">
@@ -487,10 +526,15 @@ export class MMPaySDK {
   }
   /**
    * _startPolling
-   * @param {string} _id
+   * @param {IPollingRequest} payload
+   * @param {number} payload.amount
+   * @param {string} payload.currency
+   * @param {string} payload.orderId
+   * @param {string} payload.nonce
+   * @param {string} payload.callbackUrl
    * @param {Function} onComplete
    */
-  private async _startPolling(_id: string, onComplete: (result: PolliongResult) => void): Promise<void> {
+  private async _startPolling(payload: IPollingRequest, onComplete: (result: PolliongResult) => void): Promise<void> {
     if (this.pollIntervalId !== undefined) {
       window.clearInterval(this.pollIntervalId);
     }
@@ -500,7 +544,7 @@ export class MMPaySDK {
           ? '/xpayments/sandbox-payment-polling'
           : '/xpayments/production-payment-polling';
 
-        const response = await this._callApi<PollingResponse>(endpoint, {_id: _id});
+        const response = await this._callApi<IPollingResponse>(endpoint, payload);
         const status = (response.status || '').toUpperCase();
         if (status === 'SUCCESS' || status === 'FAILED' || status === 'EXPIRED') {
           window.clearInterval(this.pollIntervalId);
@@ -513,7 +557,8 @@ export class MMPaySDK {
           this._showTerminalMessage(response.orderId || 'N/A', status as 'SUCCESS' | 'FAILED' | 'EXPIRED', message);
 
           if (onComplete) {
-            onComplete({success: success, transaction: response as PollingResponse});
+            this.tokenKey = null;
+            onComplete({success: success, transaction: response as IPollingResponse});
           }
           return;
         }

@@ -29,12 +29,20 @@
        * @returns
        */
       async _callApi(endpoint, data = {}) {
+          let config = {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${this.publishableKey}`
+          };
+          if (this.tokenKey) {
+              config = {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${this.publishableKey}`,
+                  'X-MMPay-Browser-Authorization': `${this.tokenKey}`
+              };
+          }
           const response = await fetch(`${this.baseUrl}${endpoint}`, {
               method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${this.publishableKey}`
-              },
+              headers: config,
               body: JSON.stringify(data)
           });
           if (!response.ok) {
@@ -44,9 +52,36 @@
           return response.json();
       }
       /**
+       * createTokenRequest
+       * @param {ICreateTokenRequest} payload
+       * @param {number} payload.amount
+       * @param {string} payload.currency
+       * @param {string} payload.orderId
+       * @param {string} payload.nonce
+       * @param {string} payload.callbackUrl
+       * @returns {Promise<ICreateTokenResponse>}
+       */
+      async createTokenRequest(payload) {
+          try {
+              const endpoint = this.environment === 'sandbox'
+                  ? '/xpayments/sandbox-token-request'
+                  : '/xpayments/production-token-request';
+              return await this._callApi(endpoint, payload);
+          }
+          catch (error) {
+              console.error("Token request failed:", error);
+              throw error;
+          }
+      }
+      /**
        * createPaymentRequest
-       * @param {PaymentData} payload
-       * @returns
+       * @param {ICreatePaymentRequest} payload
+       * @param {number} payload.amount
+       * @param {string} payload.currency
+       * @param {string} payload.orderId
+       * @param {string} payload.nonce
+       * @param {string} payload.callbackUrl
+       * @returns {Promise<ICreatePaymentResponse>}
        */
       async createPaymentRequest(payload) {
           try {
@@ -61,9 +96,38 @@
           }
       }
       /**
+       * showPaymentModal
+       * @param {CreatePaymentRequest} payload
+       * @param {Function} onComplete
+       */
+      async showPaymentModal(payload, onComplete) {
+          const initialContent = `<div class="mmpay-overlay-content"><div style="text-align: center; color: #fff;">ငွေပေးချေမှု စတင်နေသည်...</div></div>`;
+          this._createAndRenderModal(initialContent, false);
+          this.onCompleteCallback = onComplete;
+          try {
+              payload.nonce = new Date().getTime().toString() + '_mmp';
+              const tokenResponse = await this.createTokenRequest(payload);
+              this.tokenKey = tokenResponse.token;
+              const apiResponse = await this.createPaymentRequest(payload);
+              if (apiResponse && apiResponse.qr && apiResponse.transactionRefId) {
+                  this.pendingApiResponse = apiResponse;
+                  this.pendingPaymentPayload = payload;
+                  this._renderQrModalContent(apiResponse, payload, this.merchantName);
+                  this._startPolling(payload, onComplete);
+              }
+              else {
+                  this._showTerminalMessage(apiResponse.orderId || 'N/A', 'FAILED', 'ငွေပေးချေမှု စတင်ရန် မအောင်မြင်ပါ။ QR ဒေတာ မရရှိပါ။');
+              }
+          }
+          catch (error) {
+              this.tokenKey = null;
+              this._showTerminalMessage(payload.orderId || 'N/A', 'FAILED', 'ငွေပေးချေမှု စတင်စဉ် အမှားအယွင်း ဖြစ်ပွားသည်။ ကွန်ဆိုးလ်တွင် ကြည့်ပါ။');
+          }
+      }
+      /**
        * _createAndRenderModal
        * @param {string} contentHtml
-       * @param isTerminal
+       * @param {boolean} isTerminal
        * @returns
        */
       _createAndRenderModal(contentHtml, isTerminal = false) {
@@ -176,35 +240,9 @@
           return overlay;
       }
       /**
-       * showPaymentModal
-       * @param {PaymentData} payload
-       * @param {Function} onComplete
-       */
-      async showPaymentModal(payload, onComplete) {
-          const initialContent = `<div class="mmpay-overlay-content"><div style="text-align: center; color: #fff;">ငွေပေးချေမှု စတင်နေသည်...</div></div>`;
-          this._createAndRenderModal(initialContent, false);
-          this.onCompleteCallback = onComplete;
-          try {
-              const apiResponse = await this.createPaymentRequest(payload);
-              if (apiResponse && apiResponse.qr && apiResponse.transactionId) {
-                  this.pendingApiResponse = apiResponse;
-                  this.pendingPaymentPayload = payload;
-                  this._renderQrModalContent(apiResponse, payload, this.merchantName);
-                  this._startPolling(apiResponse._id, onComplete);
-              }
-              else {
-                  this._showTerminalMessage(apiResponse.orderId || 'N/A', 'FAILED', 'ငွေပေးချေမှု စတင်ရန် မအောင်မြင်ပါ။ QR ဒေတာ မရရှိပါ။');
-              }
-          }
-          catch (error) {
-              // Myanmar translation for "Error during payment initiation. See console."
-              this._showTerminalMessage(payload.orderId || 'N/A', 'FAILED', 'ငွေပေးချေမှု စတင်စဉ် အမှားအယွင်း ဖြစ်ပွားသည်။ ကွန်ဆိုးလ်တွင် ကြည့်ပါ။');
-          }
-      }
-      /**
        * _renderQrModalContent
-       * @param {CreatePaymentResponse} apiResponse
-       * @param {PaymentData} payload
+       * @param {ICreatePaymentResponse} apiResponse
+       * @param {CreatePaymentRequest} payload
        * @param {string} merchantName
        */
       _renderQrModalContent(apiResponse, payload, merchantName) {
@@ -276,7 +314,7 @@
               <span class="mmpay-text-myanmar">မှာယူမှုနံပါတ်:</span> <strong>${apiResponse.orderId}</strong>
           </div>
           <div class="mmpay-detail">
-              <span class="mmpay-text-myanmar">ငွေပေးငွေယူနံပါတ်:</span> <strong>${apiResponse.transactionId}</strong>
+              <span class="mmpay-text-myanmar">ငွေပေးငွေယူနံပါတ်:</span> <strong>${apiResponse.transactionRefId}</strong>
           </div>
 
           <p class="mmpay-warning mmpay-text-myanmar">
@@ -431,10 +469,15 @@
       }
       /**
        * _startPolling
-       * @param {string} _id
+       * @param {IPollingRequest} payload
+       * @param {number} payload.amount
+       * @param {string} payload.currency
+       * @param {string} payload.orderId
+       * @param {string} payload.nonce
+       * @param {string} payload.callbackUrl
        * @param {Function} onComplete
        */
-      async _startPolling(_id, onComplete) {
+      async _startPolling(payload, onComplete) {
           if (this.pollIntervalId !== undefined) {
               window.clearInterval(this.pollIntervalId);
           }
@@ -443,7 +486,7 @@
                   const endpoint = this.environment === 'sandbox'
                       ? '/xpayments/sandbox-payment-polling'
                       : '/xpayments/production-payment-polling';
-                  const response = await this._callApi(endpoint, { _id: _id });
+                  const response = await this._callApi(endpoint, payload);
                   const status = (response.status || '').toUpperCase();
                   if (status === 'SUCCESS' || status === 'FAILED' || status === 'EXPIRED') {
                       window.clearInterval(this.pollIntervalId);
@@ -454,6 +497,7 @@
                           `ငွေပေးချေမှု ${status === 'FAILED' ? 'မအောင်မြင်ပါ' : 'သက်တမ်းကုန်သွားပါပြီ'}.`;
                       this._showTerminalMessage(response.orderId || 'N/A', status, message);
                       if (onComplete) {
+                          this.tokenKey = null;
                           onComplete({ success: success, transaction: response });
                       }
                       return;

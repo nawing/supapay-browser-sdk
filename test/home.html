@@ -1,4 +1,5 @@
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,6 +13,7 @@
             display: flex;
             justify-content: center;
         }
+
         .container {
             display: flex;
             flex-direction: column;
@@ -19,12 +21,15 @@
             max-width: 1000px;
             width: 100%;
         }
+
         @media (min-width: 768px) {
             .container {
                 flex-direction: row;
             }
         }
-        .order-summary, .payment-area {
+
+        .order-summary,
+        .payment-area {
             background-color: #ffffff;
             padding: 25px;
             border-radius: 10px;
@@ -32,6 +37,7 @@
             flex: 1;
             min-height: 450px;
         }
+
         h2 {
             color: #2c3e50;
             border-bottom: 2px solid #ecf0f1;
@@ -40,6 +46,7 @@
             font-size: 1.5rem;
             font-weight: 700;
         }
+
         .item-list div {
             display: flex;
             justify-content: space-between;
@@ -47,9 +54,11 @@
             border-bottom: 1px dashed #ecf0f1;
             color: #7f8c8d;
         }
+
         .item-list div:last-child {
             border-bottom: none;
         }
+
         .total {
             margin-top: 20px;
             padding-top: 15px;
@@ -60,6 +69,7 @@
             display: flex;
             justify-content: space-between;
         }
+
         .checkout-button {
             width: 100%;
             background-color: #2ecc71;
@@ -74,10 +84,12 @@
             margin-top: 20px;
             box-shadow: 0 2px 5px rgba(46, 204, 113, 0.4);
         }
+
         .checkout-button:hover {
             background-color: #27ae60;
             box-shadow: 0 4px 8px rgba(39, 174, 96, 0.6);
         }
+
         .payment-status {
             margin-top: 20px;
             padding: 15px;
@@ -89,10 +101,19 @@
             max-height: 200px;
             overflow-y: auto;
         }
-        .success { color: #28a745; font-weight: bold; }
-        .failure { color: #dc3545; font-weight: bold; }
+
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .failure {
+            color: #dc3545;
+            font-weight: bold;
+        }
     </style>
 </head>
+
 <body>
 
     <div class="container">
@@ -115,7 +136,8 @@
         <div class="payment-area">
             <h2>💳 Payment Details</h2>
             <div id="payment-container">
-                <p style="color: #6c757d; padding: 20px;">Click the "Pay Securely" button to initialize the transaction and display the MMPay QR code.</p>
+                <p style="color: #6c757d; padding: 20px;">Click the "Pay Securely" button to initialize the transaction
+                    and display the MMPay QR code.</p>
             </div>
             <div class="payment-status" id="result-container">
                 Awaiting transaction polling result...
@@ -123,7 +145,8 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/mmpay-browser-sdk@latest/dist/mmpay-sdk.js"></script>
+    <script src="../dist/mmpay-sdk.js"></script>
+    <!-- <script src="https://cdn.jsdelivr.net/npm/mmpay-browser-sdk@latest/dist/mmpay-sdk.js"></script> -->
     <!-- <script>
         const PUBLISHABLE_KEY = 'pk_test_504013d7294ea1f6ecf4a2a0d38c31e0788286ef1b8ccacecf2a9b2809e23341';
         const sdk = new MMPaySDK(PUBLISHABLE_KEY, {
@@ -233,16 +256,8 @@
                     currency: mockOrder.currency,
                     orderId: 'FSTY' + Date.now(),
                     callbackUrl: 'https://your-fastify-backend.com/api/mmpay/webhook'
-                },(result) => {
-                    const resultContainer = document.getElementById(RESULT_CONTAINER_ID);
-                    document.getElementById(PAY_BUTTON_ID).disabled = false;
-                    if (result.success) {
-                        resultContainer.innerHTML = '<span class="success">✅ PAYMENT SUCCESSFUL!</span><br><br>' + JSON.stringify(result.transaction, null, 2);
-                        document.getElementById(CONTAINER_ID).innerHTML = '<div style="color: #2ecc71; font-size: 1.5rem; font-weight: bold; padding: 50px 0;">Transaction Complete! Thank you for your order!</div>';
-                    } else {
-                        resultContainer.innerHTML = '<span class="failure">❌ PAYMENT FAILED / EXPIRED.</span><br><br>' + JSON.stringify(result.transaction, null, 2);
-                        document.getElementById(CONTAINER_ID).innerHTML = '<div style="color: #e74c3c; font-size: 1.5rem; font-weight: bold; padding: 50px 0;">Transaction Failed. Please try again.</div>';
-                    }
+                }, (result) => {
+
                 });
 
             } catch (error) {
@@ -256,4 +271,5 @@
         window.onload = renderOrderSummary;
     </script>
 </body>
+
 </html>
