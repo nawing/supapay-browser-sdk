@@ -88,13 +88,14 @@ export class MMPaySDK {
    * @returns
    */
   private async _callApi<T>(endpoint: string, data: object = {}): Promise<T> {
+    const payload = JSON.stringify(data)
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.publishableKey}`
+        'Authorization': `Bearer ${this.publishableKey}`,
       },
-      body: JSON.stringify(data)
+      body: payload
     });
     if (!response.ok) {
       const errorText = await response.text();
