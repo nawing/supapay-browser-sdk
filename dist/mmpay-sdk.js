@@ -37,7 +37,7 @@
               config = {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${this.publishableKey}`,
-                  'X-MMPay-Browser-Authorization': `${this.tokenKey}`
+                  'X-MMPay-Btoken': `${this.tokenKey}`
               };
           }
           const response = await fetch(`${this.baseUrl}${endpoint}`, {
